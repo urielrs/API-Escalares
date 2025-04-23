@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Optimización de Rutas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f4f7fc;
+    }
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+    .formulario {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      color: #333;
+      font-weight: bold;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #resultado {
+      margin-top: 20px;
+    }
+    #map {
+      height: 400px;
+      width: 100%;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Planificador de Rutas (VRP)</h2>
+  
+  <div class="formulario">
+    <form id="formularioRutas">
+      <label for="origen">Ciudad de origen:</label>
+      <select id="origen" required>
+        <option value="CDMX">CDMX</option>
+        <option value="EDO.MEX">EDO.MEX</option>
+        <option value="QRO">QRO</option>
+        <option value="SLP">SLP</option>
+        <option value="MTY">MTY</option>
+        <option value="PUE">PUE</option>
+        <option value="GDL">GDL</option>
+        <option value="MICH">MICH</option>
+        <option value="SON">SON</option>
+      </select>
+
+      <label for="destino">Ciudad de destino:</label>
+      <select id="destino" required>
+        <option value="CDMX">CDMX</option>
+        <option value="EDO.MEX">EDO.MEX</option>
+        <option value="QRO">QRO</option>
+        <option value="SLP">SLP</option>
+        <option value="MTY">MTY</option>
+        <option value="PUE">PUE</option>
+        <option value="GDL">GDL</option>
+        <option value="MICH">MICH</option>
+        <option value="SON">SON</option>
+      </select>
+
+      <label for="velocidad">Velocidad promedio (km/h):</label>
+      <input type="number" id="velocidad" value="60" required>
+
+      <label for="gasolina">Rendimiento de gasolina (km/l):</label>
+      <input type="number" id="gasolina" value="10" required>
+
+      <label for="maxCarga">Máxima carga del vehículo:</label>
+      <input type="number" id="maxCarga" value="40" required>
+
+      <button type="button" onclick="resolverRutas()">Resolver</button>
+    </form>
+  </div>
+
+  <div id="resultado"></div>
+  <div id="map"></div>
+
+  <script>
+    const coordenadas = {
+      'EDO.MEX': [19.2938258568844, -99.65366252023884],
+      'QRO': [20.593537489366717, -100.39004057702225],
+      'CDMX': [19.432854452264177, -99.13330004822943],
+      'SLP': [22.151725492903953, -100.97657666103268],
+      'MTY': [25.673156272083876, -100.2974200019319],
+      'PUE': [19.063532268065185, -98.30729139446866],
+      'GDL': [20.67714565083998, -103.34696388920293],
+      'MICH': [19.702614895389996, -101.19228631929688],
+      'SON': [29.075273188617818, -110.95962477655333]
+    };
+
+    let map = L.map('map').setView([23.6345, -102.5528], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    function dibujarRutas(rutas) {
+      map.eachLayer(layer => {
+        if (layer instanceof L.Polyline || layer instanceof L.Marker) {
+          map.removeLayer(layer);
+        }
+      });
+
+      rutas.forEach((r) => {
+        let puntos = [coordenadas[r.ruta[0]], ...r.ruta.map(c => coordenadas[c]), coordenadas[r.ruta[0]]];
+        let polyline = L.polyline(puntos, { color: 'blue' }).addTo(map);
+        polyline.bindPopup(`Ruta: ${r.ruta.join(' → ')}<br>Distancia: ${r.distancia_total_km.toFixed(2)} km<br>Tiempo: ${r.tiempo_estimado_horas.toFixed(2)} h<br>Gasolina: ${r.combustible_consumido_litros.toFixed(2)} L`);
+        puntos.forEach((p, i) => {
+          L.marker(p).addTo(map).bindPopup(r.ruta[i] || r.ruta[0]);
+        });
+      });
+    }
+
+    function resolverRutas() {
+      const origen = document.getElementById("origen").value;
+      const destino = document.getElementById("destino").value;
+      const velocidad = parseFloat(document.getElementById("velocidad").value);
+      const gasolina = parseFloat(document.getElementById("gasolina").value);
+      const maxCarga = parseFloat(document.getElementById("maxCarga").value);
+
+      fetch("/resolver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origen, destino, velocidad, gasolina, maxCarga })
+      })
+        .then(res => res.json())
+        .then(response => {
+          const resultado = document.getElementById("resultado");
+          resultado.innerHTML = "";
+          if (response.detalles && response.detalles.length > 0) {
+            resultado.innerHTML += `<p><strong>Total de rutas generadas:</strong> ${response.detalles.length}</p>`;
+            response.detalles.forEach((r, i) => {
+              resultado.innerHTML += `<p><strong>Ruta ${i + 1}:</strong> ${r.ruta.join(" → ")}<br>` +
+                `Distancia: ${r.distancia_total_km.toFixed(2)} km<br>` +
+                `Tiempo estimado: ${r.tiempo_estimado_horas.toFixed(2)} horas<br>` +
+                `Combustible: ${r.combustible_consumido_litros.toFixed(2)} litros</p>`;
+            });
+            dibujarRutas(response.detalles);
+          } else {
+            resultado.innerHTML = "<p>No se pudieron calcular rutas.</p>";
+          }
+        });
+    }
+  </script>
+</body>
+</html>
